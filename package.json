@@ -10,11 +10,18 @@
     "build": "cd client && npm run build",
     "start": "cd server && npm start"
   },
-  "keywords": ["identity", "verification", "qr", "ranger"],
+  "keywords": [
+    "identity",
+    "verification",
+    "qr",
+    "ranger"
+  ],
   "author": "",
   "license": "MIT",
   "devDependencies": {
     "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "express": "^5.2.1"
   }
 }
-
