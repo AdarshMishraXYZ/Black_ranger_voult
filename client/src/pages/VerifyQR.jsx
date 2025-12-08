@@ -6,11 +6,13 @@ import Card from '../components/Card';
 
 const VerifyQR = () => {
   const [scanning, setScanning] = useState(false);
+  const [cameraStarting, setCameraStarting] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const scannerRef = useRef(null);
   const html5QrCodeRef = useRef(null);
+  const isProcessingRef = useRef(false);
 
   useEffect(() => {
     return () => {
@@ -24,15 +26,37 @@ const VerifyQR = () => {
     try {
       setError('');
       setResult(null);
+      setCameraStarting(true);
+      isProcessingRef.current = false; // Reset processing flag
+      
+      // Show the container first
+      setScanning(true);
+      
+      // Wait a bit for the container to render
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       const html5QrCode = new Html5Qrcode('qr-reader');
       html5QrCodeRef.current = html5QrCode;
 
+      // Get container dimensions for responsive qrbox
+      const container = document.getElementById('qr-reader');
+      const containerWidth = container?.offsetWidth || 300;
+      const qrboxSize = Math.min(250, containerWidth - 40);
+
       await html5QrCode.start(
-        { facingMode: 'environment' },
+        { 
+          facingMode: 'environment'
+        },
         {
           fps: 10,
-          qrbox: { width: 250, height: 250 }
+          qrbox: { width: qrboxSize, height: qrboxSize },
+          aspectRatio: 1.0,
+          disableFlip: false,
+          videoConstraints: {
+            facingMode: 'environment',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
         },
         (decodedText) => {
           handleScan(decodedText);
@@ -42,10 +66,12 @@ const VerifyQR = () => {
         }
       );
 
-      setScanning(true);
+      setCameraStarting(false);
     } catch (err) {
       setError('Failed to start camera. Please ensure camera permissions are granted.');
       console.error('Scan error:', err);
+      setScanning(false);
+      setCameraStarting(false);
     }
   };
 
@@ -63,26 +89,56 @@ const VerifyQR = () => {
   };
 
   const handleScan = async (token) => {
-    if (loading) return;
+    // Prevent multiple scans
+    if (loading || !token || isProcessingRef.current) {
+      console.log('Scan ignored - already processing');
+      return;
+    }
+    
+    isProcessingRef.current = true;
+    console.log('QR Code scanned:', token.substring(0, 50) + '...');
     
     setLoading(true);
-    stopScanning();
+    setError('');
+    setResult(null);
+    
+    // Stop scanning immediately to prevent multiple scans
+    await stopScanning();
 
     try {
       const deviceInfo = generateDeviceFingerprint();
       const geo = await getGeolocation();
 
+      console.log('Sending verification request...');
       const response = await api.post('/verify', {
         token,
         device_info: deviceInfo,
         geo
       });
 
-      setResult(response.data);
+      console.log('Verification response:', response.data);
+      
+      // Ensure we have a result object
+      if (response.data) {
+        setResult(response.data);
+        // Clear any previous errors
+        setError('');
+      } else {
+        throw new Error('Invalid response from server');
+      }
     } catch (err) {
-      setError(err.response?.data?.error || 'Verification failed');
+      console.error('Verification error:', err);
+      const errorMessage = err.response?.data?.error || err.message || 'Verification failed';
+      setError(errorMessage);
+      setResult(null);
+      
+      // Show error details in console for debugging
+      if (err.response) {
+        console.error('Error response:', err.response.data);
+      }
     } finally {
       setLoading(false);
+      isProcessingRef.current = false;
     }
   };
 
@@ -138,10 +194,29 @@ const VerifyQR = () => {
               </button>
             )}
 
-            <div
-              id="qr-reader"
-              className={`w-full ${scanning ? 'min-h-[300px]' : 'hidden'}`}
-            />
+            {scanning && (
+              <div className="relative">
+                <div
+                  id="qr-reader"
+                  className="w-full min-h-[400px] rounded-lg overflow-hidden bg-black/20 relative"
+                />
+                {cameraStarting && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg">
+                    <div className="text-center">
+                      <div className="inline-block animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-neon-cyan mb-4"></div>
+                      <p className="text-gray-300">Starting camera...</p>
+                    </div>
+                  </div>
+                )}
+                {!cameraStarting && (
+                  <div className="mt-2 text-center">
+                    <p className="text-sm text-gray-400">
+                      Point your camera at the QR code
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="border-t border-white/10 pt-4">
               <p className="text-sm text-gray-400 mb-3">Or enter token manually:</p>
@@ -196,38 +271,61 @@ const VerifyQR = () => {
                     <div className={`text-2xl font-bold ${result.valid ? 'text-green-400' : 'text-red-400'}`}>
                       {result.valid ? 'VALID' : 'INVALID'}
                     </div>
-                    <div className="text-sm text-gray-400">{result.reason}</div>
+                    <div className="text-sm text-gray-400">{result.reason || 'No reason provided'}</div>
                   </div>
                 </div>
               </div>
 
-              {result.identity && (
+              {result.identity ? (
                 <div className="space-y-3 pt-4 border-t border-white/10">
                   <h3 className="font-semibold text-lg">Identity Details</h3>
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
                       <span className="text-gray-400">Name:</span>
-                      <span className="font-semibold">{result.identity.name}</span>
+                      <span className="font-semibold">{result.identity.name || 'N/A'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-400">Ranger ID:</span>
-                      <span className="neon-text font-semibold">{result.identity.ranger_id}</span>
+                      <span className="neon-text font-semibold">{result.identity.ranger_id || 'N/A'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-400">Rank:</span>
-                      <span>{result.identity.rank}</span>
+                      <span>{result.identity.rank || 'N/A'}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-400">Division:</span>
-                      <span>{result.identity.division}</span>
+                      <span>{result.identity.division || 'N/A'}</span>
                     </div>
                   </div>
                 </div>
+              ) : (
+                <div className="pt-4 border-t border-white/10">
+                  <p className="text-sm text-yellow-400">
+                    ⚠️ Identity details not available
+                  </p>
+                  {!result.valid && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      This QR code is invalid or expired. Identity details are only shown for valid QR codes.
+                    </p>
+                  )}
+                </div>
               )}
 
-              <div className="pt-4 border-t border-white/10 text-xs text-gray-500">
-                Verified at: {new Date(result.timestamp).toLocaleString()}
-              </div>
+              {result.timestamp && (
+                <div className="pt-4 border-t border-white/10 text-xs text-gray-500">
+                  Verified at: {new Date(result.timestamp).toLocaleString()}
+                </div>
+              )}
+
+              {/* Debug info - remove in production */}
+              {import.meta.env.DEV && (
+                <details className="pt-4 border-t border-white/10">
+                  <summary className="text-xs text-gray-500 cursor-pointer">Debug Info</summary>
+                  <pre className="text-xs mt-2 p-2 bg-black/20 rounded overflow-auto max-h-40">
+                    {JSON.stringify(result, null, 2)}
+                  </pre>
+                </details>
+              )}
             </div>
           )}
 

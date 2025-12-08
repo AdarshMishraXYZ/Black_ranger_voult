@@ -51,3 +51,56 @@
   background: rgba(0, 242, 169, 0.5);
 }
 
+/* QR Scanner Camera Preview Styles */
+#qr-reader {
+  position: relative;
+  width: 100%;
+  min-height: 400px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+#qr-reader video,
+#qr-reader__camera_preview video {
+  width: 100% !important;
+  height: auto !important;
+  max-height: 500px;
+  object-fit: contain;
+  background: #000;
+  border-radius: 8px;
+  display: block !important;
+}
+
+#qr-reader__dashboard {
+  display: none !important;
+}
+
+#qr-reader__camera_selection {
+  display: none !important;
+}
+
+#qr-reader__scan_region {
+  border: 2px solid rgba(0, 242, 169, 0.8) !important;
+  border-radius: 8px;
+  box-shadow: 0 0 20px rgba(0, 242, 169, 0.5);
+  position: relative;
+}
+
+#qr-reader__scan_region video {
+  border-radius: 8px;
+  width: 100% !important;
+  height: auto !important;
+}
+
+/* Ensure the camera preview container is visible */
+#qr-reader__camera_preview {
+  width: 100% !important;
+  display: block !important;
+}
+
+#qr-reader__camera_preview video {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
