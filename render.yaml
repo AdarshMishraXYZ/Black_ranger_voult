@@ -1,0 +1,43 @@
+services:
+  - type: web
+    name: black-ranger-backend
+    env: node
+    plan: free
+    rootDir: server
+    buildCommand: npm install && node scripts/generate_keys.js
+    startCommand: npm run migrate && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: DATABASE_URL
+        fromDatabase:
+          name: black-ranger-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 24h
+      - key: JWT_PRIVATE_KEY_PATH
+        value: ./keys/private_key.pem
+      - key: JWT_PUBLIC_KEY_PATH
+        value: ./keys/public_key.pem
+      - key: CORS_ORIGIN
+        sync: false
+
+  - type: web
+    name: black-ranger-frontend
+    env: static
+    plan: free
+    buildCommand: cd client && npm install && npx vite build
+    staticPublishPath: client/dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false
+
+databases:
+  - name: black-ranger-db
+    plan: free
+    databaseName: black_ranger_db
+    user: ranger_user

@@ -19,14 +19,10 @@ const PORT = process.env.PORT || 3001;
 app.use(helmet());
 app.use(
   cors({
-    origin: [
-      "http://localhost:5173",
-      "https://secondaryrepo-b834p998o-adarshs-projects-14021ad6.vercel.app",
-    ],
+    origin: process.env.CORS_ORIGIN || "http://localhost:5173",
     credentials: true,
   })
 );
-
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -67,6 +63,38 @@ app.use("/api/generate-qr", qrRoutes);
 app.use("/api/verify", verifyRoutes);
 app.use("/api/logs", logsRoutes);
 app.use("/api/stats", statsRoutes);
+
+// Serve static files in production
+if (process.env.NODE_ENV === "production") {
+  const path = await import("path");
+  const { fileURLToPath } = await import("url");
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  
+  // Try multiple possible paths for frontend build
+  const possiblePaths = [
+    path.join(__dirname, "../client/dist"),
+    path.join(__dirname, "../public"),
+    path.join(__dirname, "./public")
+  ];
+  
+  for (const staticPath of possiblePaths) {
+    try {
+      const fs = await import("fs").then((m) => m.promises);
+      await fs.access(staticPath);
+      app.use(express.static(staticPath));
+      
+      // Serve React app for all non-API routes
+      app.get("*", (req, res) => {
+        res.sendFile(path.join(staticPath, "index.html"));
+      });
+      console.log(`✅ Serving static files from: ${staticPath}`);
+      break;
+    } catch (err) {
+      // Path doesn't exist, try next one
+    }
+  }
+}
 
 // Error handling middleware
 app.use((err, req, res, next) => {
