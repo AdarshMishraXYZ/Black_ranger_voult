@@ -31,7 +31,7 @@ export const verifyQR = async (req, res) => {
       let publicKey;
       try {
         const publicKeyPath = process.env.JWT_PUBLIC_KEY_PATH || './keys/public_key.pem';
-        publicKey = await fs.readFile(path.resolve(publicKeyPath), 'utf8');
+        publicKey = await fs.readFile(path.resolve(__dirname, "..", publicKeyPath), 'utf8');
       } catch (error) {
         console.error('Error reading public key:', error);
         return res.status(500).json({ error: 'Verification key not available' });

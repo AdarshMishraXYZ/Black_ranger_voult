@@ -57,7 +57,7 @@ export const generateQR = async (req, res) => {
     let privateKey;
     try {
       const privateKeyPath = process.env.JWT_PRIVATE_KEY_PATH || './keys/private_key.pem';
-      privateKey = await fs.readFile(path.resolve(privateKeyPath), 'utf8');
+      privateKey = await fs.readFile(path.resolve(__dirname, "..", privateKeyPath), 'utf8');
     } catch (error) {
       console.error('Error reading private key:', error);
       return res.status(500).json({ error: 'Signing key not available' });
