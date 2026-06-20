@@ -27,26 +27,19 @@ const VerifyQR = () => {
       setError('');
       setResult(null);
       setCameraStarting(true);
-      isProcessingRef.current = false; // Reset processing flag
-      
-      // Show the container first
+      isProcessingRef.current = false;
       setScanning(true);
-      
-      // Wait a bit for the container to render
       await new Promise(resolve => setTimeout(resolve, 100));
       
       const html5QrCode = new Html5Qrcode('qr-reader');
       html5QrCodeRef.current = html5QrCode;
 
-      // Get container dimensions for responsive qrbox
       const container = document.getElementById('qr-reader');
       const containerWidth = container?.offsetWidth || 300;
       const qrboxSize = Math.min(250, containerWidth - 40);
 
       await html5QrCode.start(
-        { 
-          facingMode: 'environment'
-        },
+        { facingMode: 'environment' },
         {
           fps: 10,
           qrbox: { width: qrboxSize, height: qrboxSize },
@@ -58,12 +51,8 @@ const VerifyQR = () => {
             height: { ideal: 720 }
           }
         },
-        (decodedText) => {
-          handleScan(decodedText);
-        },
-        (errorMessage) => {
-          // Ignore scanning errors
-        }
+        (decodedText) => { handleScan(decodedText); },
+        () => {}
       );
 
       setCameraStarting(false);
@@ -89,77 +78,61 @@ const VerifyQR = () => {
   };
 
   const handleScan = async (token) => {
-    // Prevent multiple scans
-    if (loading || !token || isProcessingRef.current) {
-      console.log('Scan ignored - already processing');
-      return;
-    }
-    
+    if (loading || !token || isProcessingRef.current) return;
     isProcessingRef.current = true;
-    console.log('QR Code scanned:', token.substring(0, 50) + '...');
-    
     setLoading(true);
     setError('');
     setResult(null);
-    
-    // Stop scanning immediately to prevent multiple scans
     await stopScanning();
 
     try {
       const deviceInfo = generateDeviceFingerprint();
       const geo = await getGeolocation();
-
-      console.log('Sending verification request...');
-      const response = await api.post('/verify', {
-        token,
-        device_info: deviceInfo,
-        geo
-      });
-
-      console.log('Verification response:', response.data);
-      
-      // Ensure we have a result object
+      const response = await api.post('/verify', { token, device_info: deviceInfo, geo });
       if (response.data) {
         setResult(response.data);
-        // Clear any previous errors
         setError('');
       } else {
         throw new Error('Invalid response from server');
       }
     } catch (err) {
-      console.error('Verification error:', err);
       const errorMessage = err.response?.data?.error || err.message || 'Verification failed';
       setError(errorMessage);
       setResult(null);
-      
-      // Show error details in console for debugging
-      if (err.response) {
-        console.error('Error response:', err.response.data);
-      }
     } finally {
       setLoading(false);
       isProcessingRef.current = false;
     }
   };
 
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setLoading(true);
+    setError('');
+    setResult(null);
+    try {
+      const html5QrCode = new Html5Qrcode('qr-reader-file');
+      const decodedText = await html5QrCode.scanFile(file, true);
+      await html5QrCode.clear();
+      await handleScan(decodedText);
+    } catch (err) {
+      setError('Could not read QR code from image. Try a clearer image.');
+      setLoading(false);
+    }
+  };
+
   const handleManualInput = async (e) => {
     e.preventDefault();
-    const token = e.target.token.value.trim();
+    const token = e.target.token.value.trim().replace(/s+/g, "");
     if (!token) return;
-
     setLoading(true);
     setError('');
 
     try {
       const deviceInfo = generateDeviceFingerprint();
       const geo = await getGeolocation();
-
-      const response = await api.post('/verify', {
-        token,
-        device_info: deviceInfo,
-        geo
-      });
-
+      const response = await api.post('/verify', { token, device_info: deviceInfo, geo });
       setResult(response.data);
     } catch (err) {
       setError(err.response?.data?.error || 'Verification failed');
@@ -179,27 +152,18 @@ const VerifyQR = () => {
 
           <div className="space-y-4">
             {!scanning ? (
-              <button
-                onClick={startScanning}
-                className="w-full neon-button-primary py-3"
-              >
+              <button onClick={startScanning} className="w-full neon-button-primary py-3">
                 Start Camera Scanner
               </button>
             ) : (
-              <button
-                onClick={stopScanning}
-                className="w-full bg-red-500/20 border border-red-500/50 text-red-400 py-3 rounded-lg hover:bg-red-500/30 transition-all"
-              >
+              <button onClick={stopScanning} className="w-full bg-red-500/20 border border-red-500/50 text-red-400 py-3 rounded-lg hover:bg-red-500/30 transition-all">
                 Stop Scanner
               </button>
             )}
 
             {scanning && (
               <div className="relative">
-                <div
-                  id="qr-reader"
-                  className="w-full min-h-[400px] rounded-lg overflow-hidden bg-black/20 relative"
-                />
+                <div id="qr-reader" className="w-full min-h-[400px] rounded-lg overflow-hidden bg-black/20 relative" />
                 {cameraStarting && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-lg">
                     <div className="text-center">
@@ -208,16 +172,22 @@ const VerifyQR = () => {
                     </div>
                   </div>
                 )}
-                {!cameraStarting && (
-                  <div className="mt-2 text-center">
-                    <p className="text-sm text-gray-400">
-                      Point your camera at the QR code
-                    </p>
-                  </div>
-                )}
               </div>
             )}
 
+            {/* Upload QR Image */}
+            <div className="border-t border-white/10 pt-4">
+              <p className="text-sm text-gray-400 mb-3">Or upload QR image:</p>
+              <div id="qr-reader-file" style={{display: 'none'}}></div>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleFileUpload}
+                className="w-full text-sm text-gray-400 bg-white/5 border border-white/10 rounded-lg px-4 py-2 cursor-pointer hover:border-neon-cyan transition-all"
+              />
+            </div>
+
+            {/* Manual Input */}
             <div className="border-t border-white/10 pt-4">
               <p className="text-sm text-gray-400 mb-3">Or enter token manually:</p>
               <form onSubmit={handleManualInput} className="space-y-3">
@@ -227,11 +197,7 @@ const VerifyQR = () => {
                   placeholder="Paste QR token here..."
                   className="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2 focus:outline-none focus:border-neon-cyan focus:ring-1 focus:ring-neon-cyan font-mono text-sm"
                 />
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full neon-button py-2 disabled:opacity-50"
-                >
+                <button type="submit" disabled={loading} className="w-full neon-button py-2 disabled:opacity-50">
                   {loading ? 'Verifying...' : 'Verify Token'}
                 </button>
               </form>
@@ -258,11 +224,7 @@ const VerifyQR = () => {
 
           {result && (
             <div className="space-y-4">
-              <div className={`p-6 rounded-lg border-2 ${
-                result.valid
-                  ? 'bg-green-500/20 border-green-500/50'
-                  : 'bg-red-500/20 border-red-500/50'
-              }`}>
+              <div className={`p-6 rounded-lg border-2 ${result.valid ? 'bg-green-500/20 border-green-500/50' : 'bg-red-500/20 border-red-500/50'}`}>
                 <div className="flex items-center space-x-3 mb-2">
                   <div className={`text-3xl ${result.valid ? 'text-green-400' : 'text-red-400'}`}>
                     {result.valid ? '✓' : '✗'}
@@ -300,9 +262,7 @@ const VerifyQR = () => {
                 </div>
               ) : (
                 <div className="pt-4 border-t border-white/10">
-                  <p className="text-sm text-yellow-400">
-                    ⚠️ Identity details not available
-                  </p>
+                  <p className="text-sm text-yellow-400">⚠️ Identity details not available</p>
                   {!result.valid && (
                     <p className="text-xs text-gray-500 mt-2">
                       This QR code is invalid or expired. Identity details are only shown for valid QR codes.
@@ -317,7 +277,6 @@ const VerifyQR = () => {
                 </div>
               )}
 
-              {/* Debug info - remove in production */}
               {import.meta.env.DEV && (
                 <details className="pt-4 border-t border-white/10">
                   <summary className="text-xs text-gray-500 cursor-pointer">Debug Info</summary>
@@ -331,7 +290,7 @@ const VerifyQR = () => {
 
           {!result && !loading && !error && (
             <div className="text-center text-gray-500 py-12">
-              <p>Scan a QR code or enter a token to verify</p>
+              <p>Scan a QR code, upload an image, or enter a token to verify</p>
             </div>
           )}
         </Card>
