@@ -46,44 +46,23 @@ export const verifyQR = async (req, res) => {
         result = 'expired';
         reason = 'QR code has expired';
       } else {
-        // Check if QR issuance exists and is valid
-        const issuanceResult = await pool.query(
-          'SELECT * FROM qr_issuances WHERE token = $1 ORDER BY created_at DESC LIMIT 1',
-          [token]
+        // Fetch identity directly from token
+        const identityResult = await pool.query(
+          'SELECT * FROM identities WHERE id = $1',
+          [decoded.identity_id]
         );
 
-        if (issuanceResult.rows.length === 0) {
+        if (identityResult.rows.length === 0) {
           result = 'invalid';
-          reason = 'QR code not found in system';
+          reason = 'Identity not found';
         } else {
-          const issuance = issuanceResult.rows[0];
-          
-          // Check if issuance is expired
-          if (new Date(issuance.expires_at) < new Date()) {
+          identity = identityResult.rows[0];
+          if (new Date(identity.expiry_date) < new Date()) {
             result = 'expired';
-            reason = 'QR code issuance has expired';
+            reason = 'Identity has expired';
           } else {
-            // Fetch identity
-            const identityResult = await pool.query(
-              'SELECT * FROM identities WHERE id = $1',
-              [decoded.identity_id]
-            );
-
-            if (identityResult.rows.length === 0) {
-              result = 'invalid';
-              reason = 'Identity not found';
-            } else {
-              identity = identityResult.rows[0];
-              
-              // Check if identity itself is expired
-              if (new Date(identity.expiry_date) < new Date()) {
-                result = 'expired';
-                reason = 'Identity has expired';
-              } else {
-                result = 'valid';
-                reason = 'QR code is valid';
-              }
-            }
+            result = 'valid';
+            reason = 'QR code is valid';
           }
         }
       }
